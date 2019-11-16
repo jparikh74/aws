@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "An example template with an IAM role for a Lambda state machine."
+Parameters:
+  lambdaArn:
+    Type: String
+    Default: arn:aws:lambda:us-west-2:829127864189:function:myTestLambda
+  waitInSeconds:
+    Type: String
+    Default: 10
+Resources:
+  ScheduledRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "ScheduledRule"
+      ScheduleExpression: "rate(5 minutes)"
+      State: "ENABLED"
+      Targets:
+        -
+          Arn: !Ref MyStateMachine
+          Id: "MyStateMachineV1"
+          Input: |-
+                { "waitInSeconds": "10" }
+          RoleArn: !GetAtt ExecuteStateMachineRole.Arn
+  ExecuteStateMachineRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            -
+              Sid: "AllowCWEServiceToAssumeRole"
+              Effect: "Allow"
+              Action:
+                - "sts:AssumeRole"
+              Principal:
+                Service:
+                  - "events.amazonaws.com"
+        Path: "/"
+        Policies:
+          -
+            PolicyName: "ExecuteStateMachine"
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                -
+                  Effect: "Allow"
+                  Action:
+                    - "states:StartExecution"
+                  Resource: "*"
+  LambdaExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+
+  StatesExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - !Sub states.${AWS::Region}.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: StatesExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "lambda:InvokeFunction"
+                Resource: "*"
+
+  MyStateMachine:
+    Type: "AWS::StepFunctions::StateMachine"
+    Properties:
+      DefinitionString: |-
+            {
+              "Comment": "A Hello World example using an AWS Lambda function",
+              "StartAt": "HelloWorld",
+              "States": {
+                "HelloWorld": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:lambda:us-west-2:829127864189:function:myTestLambda",
+                  "Next": "wait_ten_seconds"
+                },
+                "wait_ten_seconds": {
+                  "Type": "Wait",
+                  "Seconds" : 10,
+                  "Next": "HelloWorld1"
+                },
+                "HelloWorld1": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:lambda:us-west-2:829127864189:function:myTestLambda",
+                  "End": true
+                }
+              }
+            }
+      RoleArn: !GetAtt [ StatesExecutionRole, Arn ]
